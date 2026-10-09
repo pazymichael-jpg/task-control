@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 
 export function PriorityBadge({ p, className = "" }: { p: Priority; className?: string }) {
   const m = PRIORITY_META[p];
-  return <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${className}`} style={{ background: m.bg, color: m.color }}><i className="size-1.5 rounded-full" style={{ background: m.color }} />{m.label}</span>;
+  return <span className={`inline-flex items-center gap-1.5 text-xs font-semibold text-ink/80 ${className}`}><i className="size-2 rounded-full" style={{ background: m.color }} />{m.label}</span>;
 }
 export function StatusBadge({ s, className = "" }: { s: Status; className?: string }) {
   const m = STATUS_META[s];
@@ -37,9 +37,9 @@ export function Segmented<T extends string>({ value, onChange, options }: { valu
         const on = o.value === value;
         return (
           <button key={o.value} type="button" role="radio" aria-checked={on} onClick={() => onChange(o.value)}
-            className="rounded-full border px-3 py-1 text-sm font-semibold transition"
-            style={on ? { background: o.bg ?? "#eceafd", color: o.color ?? "#4f46e5", borderColor: o.color ?? "#4f46e5" } : { background: "#fff", color: "#667091", borderColor: "#e3e7f1" }}>
-            {o.label}
+            className="inline-flex items-center gap-2 rounded-xl border px-3.5 min-h-10 text-sm transition"
+            style={on ? { background: "#fff", color: "#111827", borderColor: "#111827", boxShadow: "inset 0 0 0 1px #111827", fontWeight: 700 } : { background: "#fff", color: "#4b5563", borderColor: "#e1e4ea", fontWeight: 500 }}>
+            {o.color && <i className="size-2 rounded-full" style={{ background: o.color }} />}{o.label}
           </button>
         );
       })}

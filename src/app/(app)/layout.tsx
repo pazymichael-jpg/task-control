@@ -8,7 +8,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <StoreProvider>
       <Header />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 pb-28">{children}</main>
+      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 pb-32">{children}</main>
       <TaskModal />
       <SpaceModal />
       <ChatWidget />

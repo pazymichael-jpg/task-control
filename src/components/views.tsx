@@ -9,13 +9,13 @@ import { addDays, relativeLabel, weekdayOf, WEEKDAYS_HE } from "@/lib/dates";
 export const byPriority = (a: Task, b: Task) =>
   PRIORITY_META[b.priority].rank - PRIORITY_META[a.priority].rank || (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") || a.created_at.localeCompare(b.created_at);
 
-export function DueLabel({ task, today }: { task: Task; today: string }) {
+export function DueLabel({ task, today, plain }: { task: Task; today: string; plain?: boolean }) {
   if (!task.due_date) return null;
   const over = task.due_date < today && task.status !== "done";
   const isToday = task.due_date === today && task.status !== "done";
   return (
     <span className={`inline-flex items-center gap-1 text-xs font-medium ${over ? "text-red-600" : isToday ? "text-brand" : "text-muted"}`}>
-      <CalendarClock className="size-3.5" /><bdi>{relativeLabel(task.due_date, today)}</bdi>{over && <span>· באיחור</span>}
+      {!plain && <CalendarClock className="size-3.5" />}<bdi>{relativeLabel(task.due_date, today)}</bdi>{over && !plain && <span>· באיחור</span>}
     </span>
   );
 }
@@ -35,12 +35,12 @@ export function Kanban({ space, tasks }: { space: Space; tasks: Task[] }) {
             onDragOver={(e) => { e.preventDefault(); setOver(st); }}
             onDragLeave={() => setOver((o) => (o === st ? null : o))}
             onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain") || dragId; setOver(null); setDragId(null); const t = tasks.find((x) => x.id === id); if (t && t.status !== st) s.updateTask(t.id, { status: st }); }}
-            className="rounded-2xl p-2.5 transition min-h-40" style={{ background: over === st ? m.bg : "#e9ecf5", outline: over === st ? `2px dashed ${m.color}` : "none" }}>
+            className="rounded-[1.1rem] p-3.5 transition min-h-40" style={{ background: over === st ? m.bg : "#edeef2", outline: over === st ? `2px dashed ${m.color}` : "none" }}>
             <header className="flex items-center gap-2 px-1.5 pb-2.5 pt-1">
               <i className="size-2.5 rounded-full" style={{ background: m.color }} />
               <h3 className="font-bold text-sm">{m.label}</h3>
-              <span className="text-xs font-semibold text-muted bg-white/80 rounded-full px-2">{list.length}</span>
-              <button onClick={() => s.newTask({ space_id: space.id, status: st })} aria-label={`משימה חדשה ב${m.label}`} className="ms-auto grid place-items-center size-7 rounded-lg text-muted hover:bg-white"><Plus className="size-4" /></button>
+              <span className="text-sm font-medium text-muted">{list.length}</span>
+              <button onClick={() => s.newTask({ space_id: space.id, status: st })} aria-label={`משימה חדשה ב${m.label}`} className="ms-auto grid place-items-center size-9 rounded-lg text-muted hover:bg-white"><Plus className="size-4" /></button>
             </header>
             <div className="space-y-2.5">
               {list.map((t) => (
@@ -48,16 +48,15 @@ export function Kanban({ space, tasks }: { space: Space; tasks: Task[] }) {
                   onDragStart={(e) => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; setDragId(t.id); }}
                   onDragEnd={() => { setDragId(null); setOver(null); }}
                   onClick={() => s.openTask(t.id)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && s.openTask(t.id)}
-                  className="card p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition relative overflow-hidden" style={{ opacity: dragId === t.id ? 0.4 : 1 }}>
-                  <i className="absolute inset-y-0 start-0 w-1" style={{ background: PRIORITY_META[t.priority].color }} />
-                  <p className={`font-semibold text-sm leading-snug ps-1.5 ${t.status === "done" ? "line-through text-muted" : ""}`} dir="auto">{t.title}</p>
-                  <div className="flex items-center justify-between gap-2 mt-2.5 ps-1.5">
+                  className="card !rounded-[14px] px-4 py-3.5 cursor-grab active:cursor-grabbing hover:shadow-md transition" style={{ opacity: dragId === t.id ? 0.4 : 1 }}>
+                  <p className={`font-semibold leading-snug ${t.status === "done" ? "line-through text-muted" : ""}`} dir="auto">{t.title}</p>
+                  <div className="flex items-center justify-between gap-2 mt-2.5">
                     <PriorityBadge p={t.priority} />
                     <DueLabel task={t} today={s.today} />
                   </div>
                 </article>
               ))}
-              {!list.length && <p className="text-center text-xs text-muted py-6">גררו משימה לכאן</p>}
+              {!list.length && <p className="rounded-[14px] border-2 border-dashed border-gray-300 text-center text-sm text-muted py-7 px-3">גררו לכאן משימה</p>}
             </div>
           </section>
         );
@@ -81,22 +80,21 @@ export function TodoList({ space, tasks }: { space: Space; tasks: Task[] }) {
     await s.createTask({ space_id: space.id, title: v, priority: "medium", status: "new" });
   }
   const row = (t: Task) => (
-    <li key={t.id} className="group flex items-center gap-3 px-4 py-3 hover:bg-soft/70 transition cursor-pointer" onClick={() => s.openTask(t.id)}>
+    <li key={t.id} className="group flex items-center gap-3 px-5 py-3.5 min-h-14 hover:bg-gray-50 transition cursor-pointer" onClick={() => s.openTask(t.id)}>
       <button role="checkbox" aria-checked={t.status === "done"} aria-label={t.status === "done" ? "החזרה לפתוחה" : "סימון כהושלמה"}
         onClick={(e) => { e.stopPropagation(); s.updateTask(t.id, { status: t.status === "done" ? "new" : "done" }); }}
-        className="size-5.5 shrink-0 rounded-md border-2 grid place-items-center transition"
-        style={t.status === "done" ? { background: "#16a34a", borderColor: "#16a34a" } : { borderColor: PRIORITY_META[t.priority].color, background: "#fff" }}>
+        className="size-6 shrink-0 rounded-lg border-2 grid place-items-center transition"
+        style={t.status === "done" ? { background: "#16a34a", borderColor: "#16a34a" } : { borderColor: "#c9ced8", background: "#fff" }}>
         {t.status === "done" && <Check className="size-3.5 text-white" strokeWidth={3.5} />}
       </button>
-      <span className={`flex-1 min-w-0 truncate font-medium ${t.status === "done" ? "line-through text-muted" : ""}`} dir="auto">{t.title}</span>
+      <span className={`flex-1 min-w-0 truncate font-semibold text-base ${t.status === "done" ? "line-through text-muted" : ""}`} dir="auto">{t.title}</span>
       {t.status !== "done" && t.status !== "new" && <StatusBadge s={t.status} className="hidden sm:inline-flex" />}
       <DueLabel task={t} today={s.today} />
-      <PriorityBadge p={t.priority} className="hidden sm:inline-flex" />
     </li>
   );
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      <form onSubmit={add} className="card flex items-center gap-2 p-2 ps-4">
+    <div className="max-w-3xl mx-auto">
+      <form onSubmit={add} className="card flex items-center gap-2 p-1.5 ps-5 min-h-14 !border-gray-300">
         <Plus className="size-5 text-muted shrink-0" />
         <input dir="auto" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="הוספה מהירה: כתבו משימה ולחצו Enter" className="flex-1 bg-transparent py-2 outline-none" aria-label="הוספה מהירה" />
         {title.trim() && <button className="btn btn-primary !py-1.5">הוספה</button>}
@@ -106,17 +104,17 @@ export function TodoList({ space, tasks }: { space: Space; tasks: Task[] }) {
         if (!list.length) return null;
         const m = PRIORITY_META[p];
         return (
-          <section key={p} className="card overflow-hidden">
-            <h3 className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b border-line" style={{ background: m.bg + "99", color: m.color }}>
-              <i className="size-2.5 rounded-full" style={{ background: m.color }} />{m.label}<span className="font-semibold opacity-70">{list.length}</span>
-            </h3>
+          <section key={p} aria-label={m.label}>
+            <h3 className="flex items-center gap-2 mt-7 mb-2 text-[13px] font-bold text-muted"><i className="size-2.5 rounded-full" style={{ background: m.color }} />{m.label}<span className="font-medium">{list.length}</span></h3>
+            <div className="card overflow-hidden">
             <ul className="divide-y divide-line">{list.map(row)}</ul>
+            </div>
           </section>
         );
       })}
       {!open.length && <div className="card p-10 text-center text-muted"><p className="font-bold text-ink text-lg">הכל הושלם 🎉</p><p className="text-sm mt-1">אין משימות פתוחות. הוסיפו אחת למעלה.</p></div>}
       {done.length > 0 && (
-        <section className="card overflow-hidden">
+        <section className="card overflow-hidden mt-8">
           <button onClick={() => setShowDone((v) => !v)} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-muted hover:bg-soft/70">
             <ChevronDown className={`size-4 transition ${showDone ? "" : "-rotate-90 rtl:rotate-90"}`} />הושלמו <span className="font-semibold">{done.length}</span>
           </button>

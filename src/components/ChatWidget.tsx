@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Bot, Check, ChevronDown, Layers, Loader2, SendHorizontal, Sparkles, X } from "lucide-react";
+import { Check, ChevronDown, Layers, Loader2, SendHorizontal, Sparkles, X } from "lucide-react";
 import { useStore } from "./store";
 import { Dot } from "./ui";
 
@@ -78,24 +78,24 @@ export default function ChatWidget() {
     <>
       {!open && (
         <button onClick={() => setOpen(true)} aria-label="פתיחת צ'אט עם הסוכן"
-          className="fixed bottom-5 inset-s-5 z-40 flex items-center gap-2.5 rounded-full bg-brand text-white ps-4 pe-5 h-14 shadow-pop hover:bg-brand-dark hover:scale-[1.03] transition group">
-          <span className="relative grid place-items-center"><Sparkles className="size-6" /><i className="absolute -top-0.5 -end-0.5 size-2.5 rounded-full bg-emerald-400 ring-2 ring-brand" /></span>
-          <span className="font-bold">שאל את הסוכן</span>
+          className="fixed bottom-6 inset-s-6 z-40 flex items-center gap-2.5 rounded-full bg-brand text-white ps-5 pe-6 h-14 shadow-[0_10px_30px_-8px_rgb(79_70_229/0.55)] hover:bg-brand-dark transition">
+          <Sparkles className="size-[22px]" />
+          <span className="font-semibold">שאל את הסוכן</span>
         </button>
       )}
       {open && (
         <section role="dialog" aria-label="סוכן המשימות" className="fixed z-50 bottom-0 inset-s-0 sm:bottom-5 sm:inset-s-5 w-full sm:w-[420px] h-dvh sm:h-[min(700px,calc(100dvh-40px))] bg-white sm:rounded-3xl shadow-pop border border-line flex flex-col overflow-hidden anim-pop">
-          <header className="bg-gradient-to-l from-brand to-[#6d5df0] text-white px-4 pt-3.5 pb-3 shrink-0">
+          <header className="bg-white border-b border-line px-5 pt-4 pb-3.5 shrink-0">
             <div className="flex items-center gap-3">
-              <span className="grid place-items-center size-10 rounded-full bg-white/20"><Bot className="size-5" /></span>
-              <div className="flex-1 min-w-0"><div className="font-bold leading-tight">סוכן המשימות</div><div className="text-xs text-white/80 flex items-center gap-1.5"><i className="size-1.5 rounded-full bg-emerald-300" />מחובר ומוכן לעזור</div></div>
-              <button onClick={() => setOpen(false)} aria-label="סגירה" className="grid place-items-center size-8 rounded-lg hover:bg-white/15"><X className="size-5" /></button>
+              <span className="grid place-items-center size-10 rounded-full bg-brand-soft text-brand"><Sparkles className="size-5" /></span>
+              <div className="flex-1 min-w-0"><div className="font-bold leading-tight text-base">סוכן המשימות</div><div className="text-[13px] text-muted">עונה בעברית, פועל רק על מה שבחרת</div></div>
+              <button onClick={() => setOpen(false)} aria-label="סגירה" className="grid place-items-center size-10 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600"><X className="size-5" /></button>
             </div>
             <div className="relative mt-3">
-              <button onClick={() => setMenu((v) => !v)} aria-haspopup="listbox" aria-expanded={menu} className="w-full flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 px-3 py-2 text-sm transition">
-                <span className="text-white/75">עובד על:</span>
+              <button onClick={() => setMenu((v) => !v)} aria-haspopup="listbox" aria-expanded={menu} className="w-full flex items-center gap-2.5 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 px-3.5 min-h-11 text-sm transition">
+                <span className="text-muted">עובד על:</span>
                 {scopeSpace ? <><Dot color={scopeSpace.color} /><b>{scopeSpace.name}</b></> : <><Layers className="size-4" /><b>כל המרחבים</b></>}
-                <ChevronDown className="size-4 ms-auto" />
+                <span className="ms-auto text-xs text-muted flex items-center gap-1">החלפה<ChevronDown className="size-4" /></span>
               </button>
               {menu && (
                 <>
@@ -114,7 +114,7 @@ export default function ChatWidget() {
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto scroll-thin px-4 py-4 space-y-3 bg-[#f7f8fc]" aria-live="polite">
+          <div className="flex-1 overflow-y-auto scroll-thin px-4 py-4 space-y-3 bg-[#fafafc]" aria-live="polite">
             {!msgs.length && (
               <div className="text-center pt-4 pb-2 anim-fade">
                 <div className="mx-auto grid place-items-center size-14 rounded-2xl bg-brand-soft text-brand mb-3"><Sparkles className="size-7" /></div>
@@ -137,15 +137,15 @@ export default function ChatWidget() {
                     )}
                     {m.pending && (
                       <div className="mt-2 rounded-2xl border border-amber-300 bg-amber-50 p-3">
-                        <div className="text-xs font-bold text-amber-800 mb-1.5">נדרש אישור · {m.pending.count} משימות</div>
+                        <div className="text-sm font-bold text-amber-900 mb-1.5">צריך את האישור שלך · {m.pending.count === 1 ? "משימה אחת" : `${m.pending.count} משימות`}</div>
                         <ul className="text-sm space-y-0.5 max-h-28 overflow-y-auto scroll-thin mb-3">
                           {m.pending.items.slice(0, 12).map((it, i) => <li key={i} className="truncate" dir="auto">• {it}</li>)}
                           {m.pending.items.length > 12 && <li className="text-muted">…ועוד {m.pending.items.length - 12}</li>}
                         </ul>
                         {m.pending.state === "pending" ? (
                           <div className="flex gap-2">
-                            <button disabled={busy} onClick={() => confirm(m, true)} className="btn btn-primary flex-1 !py-2"><Check className="size-4" strokeWidth={3} />מאשר</button>
-                            <button disabled={busy} onClick={() => confirm(m, false)} className="btn btn-ghost flex-1 !py-2">לא מאשר</button>
+                            <button disabled={busy} onClick={() => confirm(m, true)} className="btn btn-primary flex-1 !py-2"><Check className="size-4" strokeWidth={3} />כן, לבצע</button>
+                            <button disabled={busy} onClick={() => confirm(m, false)} className="btn btn-ghost flex-1 !py-2">לא, לבטל</button>
                           </div>
                         ) : <div className="text-sm font-semibold text-amber-900">{m.pending.state === "approved" ? "✓ אושר" : "✕ לא אושר"}</div>}
                       </div>
