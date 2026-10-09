@@ -3,8 +3,10 @@ import { listSpaces, listTasks } from "./tasks";
 import { formatDateHe, formatShort, todayStr } from "./dates";
 import { PRIORITY_META, STATUS_META, type Task } from "./constants";
 
+const GREEN_TOKEN = () => process.env.GREEN_API_TOKEN || process.env.GREEN_API_TOKEN_INSTANCE;
+
 export function whatsappConfigured() {
-  return !!(process.env.GREEN_API_ID_INSTANCE && process.env.GREEN_API_TOKEN);
+  return !!(process.env.GREEN_API_ID_INSTANCE && GREEN_TOKEN());
 }
 export function defaultChatId(): string | null {
   const c = process.env.WHATSAPP_CHAT_ID?.trim();
@@ -14,7 +16,7 @@ export function defaultChatId(): string | null {
 
 export async function sendWhatsApp(chatId: string, message: string) {
   const base = (process.env.GREEN_API_URL || "https://api.green-api.com").replace(/\/$/, "");
-  const url = `${base}/waInstance${process.env.GREEN_API_ID_INSTANCE}/sendMessage/${process.env.GREEN_API_TOKEN}`;
+  const url = `${base}/waInstance${process.env.GREEN_API_ID_INSTANCE}/sendMessage/${GREEN_TOKEN()}`;
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chatId, message }) });
   if (!r.ok) throw new Error(`Green API ${r.status}: ${await r.text()}`);
   return r.json();

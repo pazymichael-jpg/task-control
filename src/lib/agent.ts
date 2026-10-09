@@ -10,6 +10,7 @@ export type PendingInfo = { id: string; text: string; count: number; items: stri
 export type AgentResult = { reply: string; mutated: boolean; actions: string[]; pending?: PendingInfo };
 
 const CONFIRM_OVER = 3;
+const tasksWord = (n: number) => (n === 1 ? "משימה אחת" : `${n} משימות`);
 
 function client() {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set");
@@ -150,9 +151,9 @@ function describePlans(plans: Plan[]): { text: string; count: number; items: str
   const lines: string[] = []; const items: string[] = []; let count = 0;
   for (const p of plans) {
     const n = planCount(p); count += n;
-    if (p.name === "add_tasks") { lines.push(`להוסיף ${n} משימות`); items.push(...p.items.map((i) => i.title)); }
-    else if (p.name === "delete_tasks") { lines.push(`למחוק ${n} משימות`); items.push(...p.titles); }
-    else { lines.push(`לעדכן ${n} משימות (${p.changeText})`); items.push(...p.titles); }
+    if (p.name === "add_tasks") { lines.push(`להוסיף ${tasksWord(n)}`); items.push(...p.items.map((i) => i.title)); }
+    else if (p.name === "delete_tasks") { lines.push(`למחוק ${tasksWord(n)}`); items.push(...p.titles); }
+    else { lines.push(`לעדכן ${tasksWord(n)} (${p.changeText})`); items.push(...p.titles); }
   }
   return { text: `אני עומד ${lines.join(" ו")}.`, count, items };
 }
@@ -161,15 +162,15 @@ async function execPlan(ctx: Ctx, p: Plan): Promise<{ result: any; summary: stri
   if (p.name === "add_tasks") {
     const created = [];
     for (const i of p.items) created.push(await createTask(i));
-    return { result: { added: created.map((t) => tview(t, ctx)) }, summary: `נוספו ${created.length} משימות` };
+    return { result: { added: created.map((t) => tview(t, ctx)) }, summary: `נוספו ${tasksWord(created.length)}` };
   }
   if (p.name === "delete_tasks") {
     await deleteTasks(p.ids);
-    return { result: { deleted: p.ids.length, titles: p.titles }, summary: `נמחקו ${p.ids.length} משימות` };
+    return { result: { deleted: p.ids.length, titles: p.titles }, summary: `נמחקו ${tasksWord(p.ids.length)}` };
   }
   let n = 0;
   for (const id of p.ids) if (await updateTask(id, p.changes)) n++;
-  return { result: { updated: n, titles: p.titles, changes: p.changes }, summary: `עודכנו ${n} משימות (${p.changeText})` };
+  return { result: { updated: n, titles: p.titles, changes: p.changes }, summary: `עודכנו ${tasksWord(n)} (${p.changeText})` };
 }
 
 async function runRead(ctx: Ctx, name: string, args: any): Promise<any> {
@@ -207,6 +208,10 @@ async function runRead(ctx: Ctx, name: string, args: any): Promise<any> {
 const MUTATING = new Set(["add_tasks", "update_tasks", "delete_tasks"]);
 
 /* ------------------------------ prompt ---------------------------------- */
+function nextDayOfMonth(today: string): string {
+  const next = (dom: number) => { for (let i = 0; i <= 62; i++) { const d = addDays(today, i); if (Number(d.slice(8)) === dom) return d; } return ""; };
+  return Array.from({ length: 31 }, (_, i) => `${i + 1}→${next(i + 1)}`).join(", ");
+}
 function systemPrompt(ctx: Ctx, channel: string) {
   const days = Array.from({ length: 10 }, (_, i) => { const d = addDays(ctx.today, i); return `${d} (יום ${WEEKDAYS_HE[weekdayOf(d)]}${i === 0 ? ", היום" : i === 1 ? ", מחר" : ""})`; }).join("\n");
   const scopeText = ctx.scope === "all" ? "כל המרחבים" : `המרחב "${ctx.inScope[0]?.name}" בלבד`;
@@ -215,13 +220,14 @@ function systemPrompt(ctx: Ctx, channel: string) {
 המרחבים בתחום: ${ctx.inScope.map((s) => `"${s.name}"`).join(", ") || "אין"}.
 היום: ${ctx.today} (יום ${WEEKDAYS_HE[weekdayOf(ctx.today)]}). אזור זמן: ישראל. הימים הקרובים:
 ${days}
+"עד ה-N בחודש" / "ב-N לחודש" = התאריך הקרוב ביותר (כולל היום) שבו היום בחודש הוא N. טבלה: ${nextDayOfMonth(ctx.today)}
 כללים:
 - השתמש בכלים כדי לקרוא ולשנות משימות. אל תמציא משימות ואל תנחש מזהים - קרא קודם עם read_tasks כשצריך.
 - כשהמשתמש מבקש פעולה, בצע אותה בקריאה לכלי. את בקשת האישור (מעל ${CONFIRM_OVER} משימות או מחיקה) מבצעת המערכת בעצמה - אל תשאל "האם לאשר" בטקסט.
 - ברירת מחדל להוספת משימה: עדיפות בינונית, סטטוס חדשה. "עד ה-10" = התאריך הקרוב עם היום ה-10 בחודש. "מחר", "ביום ראשון" וכו' - לפי הלוח למעלה.
 - במרחב בודד אפשר להשמיט שם מרחב בהוספה. בכל המרחבים - אם לא ברור המרחב, שאל.
 - אחרי שפעלת: אמור בקצרה מה עשית (כמה משימות ומה השתנה). בשאלות על עדיפויות: תן המלצה ממוקדת (דחוף, באיחור, להיום) ונמק במשפט.
-- אל תשתמש בכותרות או בטבלאות. רשימות קצרות עם מקף מותרות${channel === "whatsapp" ? ". זו שיחת וואטסאפ: אפשר *הדגשה* בכוכביות ואימוג'י בודד" : ""}.`;
+- אל תשתמש בכותרות, בטבלאות או בעיצוב markdown (בלי כוכביות ##). רשימות קצרות עם מקף מותרות${channel === "whatsapp" ? ". זו שיחת וואטסאפ: אפשר אימוג'י בודד" : ""}.`;
 }
 
 /* ------------------------------ main loop ------------------------------- */
@@ -230,7 +236,7 @@ type OAIMsg = any;
 async function loop(messages: OAIMsg[], ctx: Ctx, channel: string, chatRef: string | null, acc: { mutated: boolean; actions: string[] }): Promise<AgentResult> {
   const ai = client();
   for (let step = 0; step < 6; step++) {
-    const res = await ai.chat.completions.create({ model: model(), messages: [{ role: "system", content: systemPrompt(ctx, channel) }, ...messages], tools: TOOLS });
+    const res = await ai.chat.completions.create({ model: model(), messages: [{ role: "system", content: systemPrompt(ctx, channel) }, ...messages], tools: TOOLS, reasoning_effort: (process.env.OPENAI_REASONING_EFFORT || "none") as any });
     const msg: any = res.choices[0].message;
     const calls: any[] = (msg.tool_calls ?? []).filter((c: any) => c.type === "function");
     if (!calls.length) return { reply: (msg.content || "בוצע.").trim(), mutated: acc.mutated, actions: acc.actions };
