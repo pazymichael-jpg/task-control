@@ -37,7 +37,9 @@ export async function POST(req: NextRequest) {
   const secret = process.env.WEBHOOK_SECRET;
   if (!secret || req.nextUrl.searchParams.get("secret") !== secret) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => null);
-  if (!body || body.typeWebhook !== "incomingMessageReceived") return NextResponse.json({ ok: true });
+  // Messages the owner types to themselves ("Message yourself") arrive as outgoingMessageReceived;
+  // replies the system sends through the API arrive as outgoingAPIMessageReceived and are never processed (no loops).
+  if (!body || !["incomingMessageReceived", "outgoingMessageReceived"].includes(body.typeWebhook)) return NextResponse.json({ ok: true });
 
   const chatId: string | undefined = body.senderData?.chatId;
   const allowed = defaultChatId();
