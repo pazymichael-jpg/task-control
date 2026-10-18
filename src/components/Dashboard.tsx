@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMemo } from "react";
-import { Check, Plus } from "lucide-react";
+import { Check, Pencil, Plus } from "lucide-react";
 import { useStore } from "./store";
 import { Dot, PriorityBadge } from "./ui";
 import { byPriority, DueLabel } from "./views";
@@ -91,12 +91,15 @@ export default function Dashboard() {
           const doneWeek = ts.filter((t) => t.completed_at && t.completed_at.slice(0, 10) >= ws).length;
           const pct = ts.length ? Math.round(((ts.length - o.length) / ts.length) * 100) : 0;
           return (
-            <Link key={sp.id} href={`/space/${sp.id}`} className="card p-6 hover:border-gray-300 hover:shadow-md transition block">
-              <div className="flex items-center gap-2.5 font-bold text-lg"><Dot color={sp.color} size={12} />{sp.name}<span className="ms-auto text-[13px] font-medium text-muted">{VIEW_META[sp.view].label}</span></div>
-              <div className="flex items-baseline gap-2 mt-5"><span className="text-[40px] leading-none font-extrabold">{o.length}</span><span className="text-muted">פתוחות</span></div>
-              <p className="mt-1.5 text-sm text-muted">{overdue ? <span className="text-red-600 font-semibold">{overdue} באיחור</span> : "אין באיחור"} · נסגרו השבוע {doneWeek}</p>
-              <div className="mt-4 h-1.5 rounded-full bg-soft overflow-hidden" role="progressbar" aria-valuenow={pct} aria-label="התקדמות"><div className="h-full rounded-full" style={{ width: pct + "%", background: sp.color }} /></div>
-            </Link>
+            <div key={sp.id} className="relative">
+              <Link href={`/space/${sp.id}`} className="card p-6 hover:border-gray-300 hover:shadow-md transition block">
+                <div className="flex items-center gap-2.5 font-bold text-lg"><Dot color={sp.color} size={12} />{sp.name}<span className="ms-auto me-9 text-[13px] font-medium text-muted">{VIEW_META[sp.view].label}</span></div>
+                <div className="flex items-baseline gap-2 mt-5"><span className="text-[40px] leading-none font-extrabold">{o.length}</span><span className="text-muted">פתוחות</span></div>
+                <p className="mt-1.5 text-sm text-muted">{overdue ? <span className="text-red-600 font-semibold">{overdue} באיחור</span> : "אין באיחור"} · נסגרו השבוע {doneWeek}</p>
+                <div className="mt-4 h-1.5 rounded-full bg-soft overflow-hidden" role="progressbar" aria-valuenow={pct} aria-label="התקדמות"><div className="h-full rounded-full" style={{ width: pct + "%", background: sp.color }} /></div>
+              </Link>
+              <button onClick={() => s.setSpaceEditor({ mode: "edit", id: sp.id })} aria-label={`עריכת המרחב ${sp.name}`} title="עריכה ומחיקה" className="absolute top-4 end-4 grid place-items-center size-9 rounded-lg text-muted hover:text-ink hover:bg-gray-100 transition"><Pencil className="size-4" /></button>
+            </div>
           );
         })}
         <button onClick={() => s.setSpaceEditor({ mode: "new" })} className="rounded-[1.1rem] border-2 border-dashed border-gray-300 text-muted hover:text-ink hover:bg-white transition min-h-40 grid place-items-center font-semibold"><span className="flex items-center gap-2"><Plus className="size-5" />מרחב חדש</span></button>

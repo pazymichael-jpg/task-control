@@ -29,7 +29,7 @@ export default function SpacePage({ id }: { id: string }) {
                 <Icon className="size-4" />{VIEW_META[v].label}</button>;
             })}
           </div>
-          <button onClick={() => s.setSpaceEditor({ mode: "edit", id })} aria-label="הגדרות מרחב" className="btn btn-ghost !px-3"><Settings2 className="size-[18px]" /></button>
+          <button onClick={() => s.setSpaceEditor({ mode: "edit", id })} title="עריכה ומחיקה של המרחב" className="btn btn-ghost"><Settings2 className="size-[18px]" />עריכה</button>
           <button onClick={() => s.newTask({ space_id: id })} className="btn btn-primary" style={{ background: space.color }}><Plus className="size-[18px]" strokeWidth={2.5} />משימה חדשה</button>
         </div>
       </div>

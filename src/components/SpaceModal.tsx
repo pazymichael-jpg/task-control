@@ -25,6 +25,7 @@ function Form({ space }: { space: { id: string; name: string; color: string; vie
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const close = () => s.setSpaceEditor(null);
+  const taskCount = space ? s.tasks.filter((t) => t.space_id === space.id).length : 0;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -71,7 +72,7 @@ function Form({ space }: { space: { id: string; name: string; color: string; vie
           <button type="button" className="btn btn-ghost" onClick={close}>ביטול</button>
           {space && (
             <button type="button" className="btn btn-danger ms-auto" onClick={async () => { if (!confirmDel) return setConfirmDel(true); close(); router.push("/"); await s.deleteSpace(space.id); }}>
-              <Trash2 className="size-4" />{confirmDel ? "זה ימחק גם את כל המשימות. לחץ שוב" : "מחיקת מרחב"}
+              <Trash2 className="size-4" />{confirmDel ? (taskCount ? `מחיקה סופית (${taskCount} משימות)` : "מחיקה סופית") : "מחיקת מרחב"}
             </button>
           )}
         </div>
