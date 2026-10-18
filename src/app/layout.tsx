@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Heebo } from "next/font/google";
 import "./globals.css";
 
@@ -7,8 +7,10 @@ const heebo = Heebo({ subsets: ["hebrew", "latin"], variable: "--font-heebo", we
 export const metadata: Metadata = {
   title: "שליטה במשימות",
   description: "מערכת אישית חכמה לניהול משימות, עם סוכן AI",
-  icons: { icon: "/icon.svg" },
+  icons: { icon: "/icon.svg", apple: "/apple-icon.png" },
+  appleWebApp: { capable: true, title: "משימות", statusBarStyle: "default" },
 };
+export const viewport: Viewport = { themeColor: "#ffffff" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
