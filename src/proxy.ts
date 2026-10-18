@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COOKIE, verifyToken } from "@/lib/auth";
 
-// Routes that authenticate themselves (webhook secret / cron secret) or are public.
-const OPEN = ["/login", "/api/login", "/api/whatsapp/webhook", "/api/cron/"];
+// Public routes.
+const OPEN = ["/login", "/api/login"];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
