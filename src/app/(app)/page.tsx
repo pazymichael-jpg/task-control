@@ -1,2 +1,2 @@
-import Dashboard from "@/components/Dashboard";
-export default function Page() { return <Dashboard />; }
+import { AllSpaces } from "@/components/SpacePage";
+export default function Page() { return <AllSpaces />; }

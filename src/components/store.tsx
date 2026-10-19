@@ -1,22 +1,21 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { Space, Task, View } from "@/lib/constants";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { isClosed, type Space, type Task } from "@/lib/constants";
 
-export type EditorState = null | { mode: "edit"; id: string } | { mode: "new"; defaults: Partial<Task> };
 export type SpaceEditor = null | { mode: "new" } | { mode: "edit"; id: string };
+export type Toast = null | { id: number; text: string; undo?: () => void };
 
 type Store = {
   spaces: Space[]; tasks: Task[]; today: string; loaded: boolean;
-  dashSelected: string[]; setDashSelected: (ids: string[]) => void;
   refresh: () => Promise<void>;
   createTask: (t: Partial<Task>) => Promise<Task | null>;
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
-  createSpace: (name: string, color: string, view: View) => Promise<Space | null>;
+  createSpace: (name: string, color: string) => Promise<Space | null>;
   updateSpace: (id: string, patch: Partial<Space>) => Promise<void>;
   deleteSpace: (id: string) => Promise<void>;
-  editor: EditorState; openTask: (id: string) => void; newTask: (defaults?: Partial<Task>) => void; closeEditor: () => void;
   spaceEditor: SpaceEditor; setSpaceEditor: (s: SpaceEditor) => void;
+  toast: Toast; showToast: (text: string, undo?: () => void) => void;
 };
 const Ctx = createContext<Store | null>(null);
 export const useStore = () => { const c = useContext(Ctx); if (!c) throw new Error("no store"); return c; };
@@ -28,10 +27,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [today, setToday] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const [dash, setDash] = useState<string[] | null>(null);
-  const [editor, setEditor] = useState<EditorState>(null);
   const [spaceEditor, setSpaceEditor] = useState<SpaceEditor>(null);
+  const [toast, setToast] = useState<Toast>(null);
   const busy = useRef(0);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const refresh = useCallback(async () => {
     try {
@@ -40,13 +39,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const d = await r.json();
       if (busy.current > 0) return; // don't clobber optimistic updates
       setSpaces(d.spaces); setTasks(d.tasks); setToday(d.today);
-      setDash((cur) => cur ?? d.dashboardSpaces ?? null);
       setLoaded(true);
     } catch {}
   }, []);
 
   useEffect(() => {
-    try { const c = localStorage.getItem("dashSelected"); if (c) setDash(JSON.parse(c)); } catch {}
     refresh();
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
@@ -54,14 +51,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => { window.removeEventListener("focus", onFocus); clearInterval(iv); };
   }, [refresh]);
 
-  const dashSelected = useMemo(() => {
-    const ids = spaces.map((s) => s.id);
-    return dash ? dash.filter((id) => ids.includes(id)) : ids;
-  }, [dash, spaces]);
-  const setDashSelected = (ids: string[]) => {
-    setDash(ids);
-    try { localStorage.setItem("dashSelected", JSON.stringify(ids)); } catch {}
-    fetch("/api/settings", { method: "PUT", ...json({ dashboardSpaces: ids }) });
+  const showToast = (text: string, undo?: () => void) => {
+    clearTimeout(toastTimer.current);
+    setToast({ id: Date.now(), text, undo });
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
   };
 
   async function mutate<T>(fn: () => Promise<T>): Promise<T> {
@@ -70,7 +63,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }
 
   const value: Store = {
-    spaces, tasks, today, loaded, dashSelected, setDashSelected, refresh,
+    spaces, tasks, today, loaded, refresh,
     createTask: (t) => mutate(async () => {
       const r = await fetch("/api/tasks", { method: "POST", ...json(t) });
       if (!r.ok) return null;
@@ -81,7 +74,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     updateTask: (id, patch) => mutate(async () => {
       const prev = tasks;
       const now = new Date().toISOString().slice(0, 19);
-      setTasks((p) => p.map((t) => t.id === id ? { ...t, ...patch, completed_at: patch.status ? (patch.status === "done" ? t.completed_at ?? now : null) : t.completed_at } : t));
+      setTasks((p) => p.map((t) => t.id === id ? { ...t, ...patch, completed_at: patch.status ? (isClosed(patch.status) ? t.completed_at ?? now : null) : t.completed_at } : t));
       const r = await fetch(`/api/tasks/${id}`, { method: "PATCH", ...json(patch) });
       if (!r.ok) { setTasks(prev); return; }
       const saved: Task = await r.json();
@@ -91,12 +84,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setTasks((p) => p.filter((t) => t.id !== id));
       await fetch(`/api/tasks/${id}`, { method: "DELETE" });
     }),
-    createSpace: (name, color, view) => mutate(async () => {
-      const r = await fetch("/api/spaces", { method: "POST", ...json({ name, color, view }) });
+    createSpace: (name, color) => mutate(async () => {
+      const r = await fetch("/api/spaces", { method: "POST", ...json({ name, color }) });
       if (!r.ok) return null;
       const s: Space = await r.json();
       setSpaces((p) => [...p, s]);
-      setDash((cur) => (cur ? [...cur, s.id] : cur));
       return s;
     }),
     updateSpace: (id, patch) => mutate(async () => {
@@ -108,8 +100,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setTasks((p) => p.filter((t) => t.space_id !== id));
       await fetch(`/api/spaces/${id}`, { method: "DELETE" });
     }),
-    editor, openTask: (id) => setEditor({ mode: "edit", id }), newTask: (defaults = {}) => setEditor({ mode: "new", defaults }), closeEditor: () => setEditor(null),
-    spaceEditor, setSpaceEditor,
+    spaceEditor, setSpaceEditor, toast, showToast,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

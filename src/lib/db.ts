@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS pending_actions (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS processed_messages (id text PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_time text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS gcal_event_id text;
+UPDATE tasks SET status='in_progress' WHERE status='on_hold';
+UPDATE tasks SET completed_at=now() WHERE status IN ('done','cancelled') AND completed_at IS NULL;
 `;
 
 export async function ensureSchema() {

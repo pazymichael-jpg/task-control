@@ -1,41 +1,60 @@
 "use client";
 import Link from "next/link";
-import { Plus, Settings2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { useStore } from "./store";
-import { CalendarView, Kanban, TodoList } from "./views";
-import { VIEW_ICON } from "./SpaceModal";
-import { VIEWS, VIEW_META } from "@/lib/constants";
+import TaskTable from "./TaskTable";
+import { Dot } from "./ui";
+import { isClosed, type Space, type Task } from "@/lib/constants";
+
+// Open tasks: by due date (undated last), then time, then creation.
+export const byDue = (a: Task, b: Task) =>
+  (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") || (a.due_time ?? "99").localeCompare(b.due_time ?? "99") || a.created_at.localeCompare(b.created_at);
+
+function Section({ space, heading }: { space: Space; heading?: "h1" | "h2" }) {
+  const s = useStore();
+  const tasks = s.tasks.filter((t) => t.space_id === space.id && !isClosed(t.status)).sort(byDue);
+  const H = heading ?? "h2";
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-1.5 px-0.5">
+        <H className={`flex items-center gap-2 font-bold ${H === "h1" ? "text-lg" : "text-base"}`}><Dot color={space.color} />{space.name}</H>
+        <span className="text-xs text-muted">{tasks.length}</span>
+        <button onClick={() => s.setSpaceEditor({ mode: "edit", id: space.id })} aria-label={`עריכת המרחב ${space.name}`} title="עריכה ומחיקה" className="grid place-items-center size-7 rounded-md text-gray-400 hover:text-ink hover:bg-gray-100"><Pencil className="size-3.5" /></button>
+      </div>
+      <TaskTable tasks={tasks} spaceId={space.id} />
+    </section>
+  );
+}
+
+export function AllSpaces() {
+  const s = useStore();
+  if (!s.loaded) return <p className="py-16 text-center text-muted">טוען…</p>;
+  if (!s.spaces.length) return (
+    <div className="py-16 text-center">
+      <p className="font-bold">אין עדיין מרחבים</p>
+      <button onClick={() => s.setSpaceEditor({ mode: "new" })} className="btn btn-primary mt-3">יצירת מרחב</button>
+    </div>
+  );
+  return <div className="space-y-6">{s.spaces.map((sp) => <Section key={sp.id} space={sp} />)}</div>;
+}
 
 export default function SpacePage({ id }: { id: string }) {
   const s = useStore();
   const space = s.spaces.find((x) => x.id === id);
-  if (!s.loaded) return <div className="py-24 text-center text-muted">טוען…</div>;
-  if (!space) return <div className="card p-12 text-center"><p className="font-bold text-lg">המרחב לא נמצא</p><Link href="/" className="btn btn-primary mt-4">לדשבורד</Link></div>;
-  const tasks = s.tasks.filter((t) => t.space_id === id);
-  const open = tasks.filter((t) => t.status !== "done").length;
+  if (!s.loaded) return <p className="py-16 text-center text-muted">טוען…</p>;
+  if (!space) return <div className="py-16 text-center"><p className="font-bold">המרחב לא נמצא</p><Link href="/" className="btn btn-primary mt-3">לכל המרחבים</Link></div>;
+  return <Section space={space} heading="h1" />;
+}
+
+export function ArchivePage() {
+  const s = useStore();
+  if (!s.loaded) return <p className="py-16 text-center text-muted">טוען…</p>;
+  const tasks = s.tasks.filter((t) => isClosed(t.status)).sort((a, b) => (b.completed_at ?? "").localeCompare(a.completed_at ?? ""));
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0">
-          <h1 className="text-[32px] leading-tight font-extrabold tracking-tight truncate flex items-center gap-3"><i className="size-3.5 rounded-full shrink-0" style={{ background: space.color }} />{space.name}</h1>
-          <p className="text-sm text-muted mt-0.5">{open} פתוחות מתוך {tasks.length}</p>
-        </div>
-        <div className="ms-auto flex flex-wrap items-center gap-2">
-          <div className="flex rounded-xl bg-[#eaecf1] p-1 gap-0.5" role="tablist" aria-label="תצוגה">
-            {VIEWS.map((v) => {
-              const Icon = VIEW_ICON[v]; const on = space.view === v;
-              return <button key={v} role="tab" aria-selected={on} onClick={() => s.updateSpace(space.id, { view: v })} title={VIEW_META[v].desc}
-                className="flex items-center gap-1.5 rounded-[9px] px-4 min-h-10 text-sm font-semibold transition" style={on ? { background: "#fff", color: "#111827", boxShadow: "0 1px 2px rgb(17 24 39 / .1)" } : { color: "#4b5563" }}>
-                <Icon className="size-4" />{VIEW_META[v].label}</button>;
-            })}
-          </div>
-          <button onClick={() => s.setSpaceEditor({ mode: "edit", id })} title="עריכה ומחיקה של המרחב" className="btn btn-ghost"><Settings2 className="size-[18px]" />עריכה</button>
-          <button onClick={() => s.newTask({ space_id: id })} className="btn btn-primary" style={{ background: space.color }}><Plus className="size-[18px]" strokeWidth={2.5} />משימה חדשה</button>
-        </div>
-      </div>
-      {space.view === "kanban" && <Kanban space={space} tasks={tasks} />}
-      {space.view === "todo" && <TodoList space={space} tasks={tasks} />}
-      {space.view === "calendar" && <CalendarView space={space} tasks={tasks} />}
-    </div>
+    <section>
+      <div className="flex items-center gap-2 mb-1.5 px-0.5"><h1 className="font-bold text-lg">בוצעו ובוטלו</h1><span className="text-xs text-muted">{tasks.length}</span></div>
+      <p className="text-xs text-muted mb-2 px-0.5">שינוי סטטוס ל"לא החל" או "בתהליך" מחזיר את המשימה למרחב שלה.</p>
+      <TaskTable tasks={tasks} archive />
+    </section>
   );
 }

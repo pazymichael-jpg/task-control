@@ -1,17 +1,8 @@
 "use client";
 import { useEffect } from "react";
-import { PRIORITY_META, STATUS_META, type Priority, type Status } from "@/lib/constants";
 import { X } from "lucide-react";
 
-export function PriorityBadge({ p, className = "" }: { p: Priority; className?: string }) {
-  const m = PRIORITY_META[p];
-  return <span className={`inline-flex items-center gap-1.5 text-xs font-semibold text-ink/80 ${className}`}><i className="size-2 rounded-full" style={{ background: m.color }} />{m.label}</span>;
-}
-export function StatusBadge({ s, className = "" }: { s: Status; className?: string }) {
-  const m = STATUS_META[s];
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${className}`} style={{ background: m.bg, color: m.color }}>{m.label}</span>;
-}
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
@@ -19,33 +10,17 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
     return () => { window.removeEventListener("keydown", k); document.body.style.overflow = prev; };
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center p-3 sm:p-6 bg-ink/40 backdrop-blur-[2px] anim-fade" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={title} className={`card w-full ${wide ? "max-w-2xl" : "max-w-lg"} max-h-[92dvh] overflow-y-auto scroll-thin shadow-pop anim-pop`}>
-        <div className="flex items-center justify-between px-6 pt-5 pb-3">
-          <h2 className="text-lg font-bold">{title}</h2>
-          <button onClick={onClose} aria-label="סגירה" className="grid place-items-center size-8 rounded-lg text-muted hover:bg-soft"><X className="size-4" /></button>
+    <div className="fixed inset-0 z-50 grid place-items-end sm:place-items-center sm:p-6 bg-ink/40 anim-fade" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div role="dialog" aria-modal="true" aria-label={title} className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl max-h-[92dvh] overflow-y-auto shadow-pop anim-pop">
+        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+          <h2 className="text-base font-bold">{title}</h2>
+          <button onClick={onClose} aria-label="סגירה" className="grid place-items-center size-9 rounded-lg text-muted hover:bg-soft"><X className="size-4" /></button>
         </div>
         {children}
       </div>
     </div>
   );
 }
-export function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: string; color?: string; bg?: string }[] }) {
-  return (
-    <div className="flex flex-wrap gap-1.5" role="radiogroup">
-      {options.map((o) => {
-        const on = o.value === value;
-        return (
-          <button key={o.value} type="button" role="radio" aria-checked={on} onClick={() => onChange(o.value)}
-            className="inline-flex items-center gap-2 rounded-xl border px-3.5 min-h-10 text-sm transition"
-            style={on ? { background: "#fff", color: "#111827", borderColor: "#111827", boxShadow: "inset 0 0 0 1px #111827", fontWeight: 700 } : { background: "#fff", color: "#4b5563", borderColor: "#e1e4ea", fontWeight: 500 }}>
-            {o.color && <i className="size-2 rounded-full" style={{ background: o.color }} />}{o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-export function Dot({ color, size = 10 }: { color: string; size?: number }) {
+export function Dot({ color, size = 8 }: { color: string; size?: number }) {
   return <i className="inline-block rounded-full shrink-0" style={{ background: color, width: size, height: size }} />;
 }

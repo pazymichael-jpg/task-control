@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 import { query } from "./db";
-import { listSpaces, listTasks, createTask, updateTask, deleteTasks } from "./tasks";
+import { listSpaces, listTasks, createTask, updateTask, deleteTasks, isDate, isTime } from "./tasks";
 import { addDays, formatDateHe, todayStr, WEEKDAYS_HE, weekdayOf, weekStart } from "./dates";
-import { PRIORITIES, PRIORITY_META, STATUSES, STATUS_META, type Priority, type Space, type Status, type Task } from "./constants";
+import { STATUSES, STATUS_META, isClosed, type Space, type Status, type Task } from "./constants";
 
 export type Scope = string; // "all" or a space id
 export type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -27,14 +27,13 @@ const filterSchema = {
   properties: {
     space: { type: "string", description: "שם מרחב (רק בתוך תחום העבודה)" },
     status: { type: "array", items: { type: "string", enum: [...STATUSES] } },
-    priority: { type: "array", items: { type: "string", enum: [...PRIORITIES] } },
-    overdue: { type: "boolean", description: "רק משימות באיחור (תאריך יעד עבר ולא הושלמו)" },
+    overdue: { type: "boolean", description: "רק משימות באיחור (תאריך יעד עבר והן עדיין פתוחות)" },
     due_on: { type: "string", description: "YYYY-MM-DD, תאריך יעד מדויק" },
     due_from: { type: "string", description: "YYYY-MM-DD" },
     due_to: { type: "string", description: "YYYY-MM-DD" },
     no_due_date: { type: "boolean", description: "רק משימות בלי תאריך יעד" },
-    text: { type: "string", description: "חיפוש טקסט בכותרת" },
-    include_done: { type: "boolean", description: "לכלול גם משימות שהושלמו (ברירת מחדל: לא, אלא אם סטטוס done צוין)" },
+    text: { type: "string", description: "חיפוש טקסט במשימה או בהערות" },
+    include_closed: { type: "boolean", description: "לכלול גם משימות מהארכיון (בוצע/בוטלה). ברירת מחדל: לא, אלא אם צוין סטטוס" },
   },
 };
 const selectorProps = {
@@ -44,23 +43,25 @@ const selectorProps = {
 export const TOOLS: any[] = [
   { type: "function", function: { name: "read_tasks", description: "קריאת משימות לפי סינון. מחזיר רשימת משימות.", parameters: { type: "object", properties: { filter: filterSchema, limit: { type: "integer" } } } } },
   { type: "function", function: { name: "add_tasks", description: "הוספת משימה אחת או יותר.", parameters: { type: "object", required: ["tasks"], properties: { tasks: { type: "array", items: { type: "object", required: ["title"], properties: {
-    title: { type: "string" }, space: { type: "string", description: "שם המרחב. אם בתחום עבודה של מרחב אחד אפשר להשמיט." },
-    priority: { type: "string", enum: [...PRIORITIES] }, status: { type: "string", enum: [...STATUSES] },
-    due_date: { type: "string", description: "YYYY-MM-DD" }, description: { type: "string" } } } } } } } },
-  { type: "function", function: { name: "update_tasks", description: "עדכון משימות לפי מזהים או סינון: סטטוס, עדיפות, תאריך יעד, כותרת או מרחב.", parameters: { type: "object", required: ["changes"], properties: { ...selectorProps, changes: { type: "object", properties: {
-    status: { type: "string", enum: [...STATUSES] }, priority: { type: "string", enum: [...PRIORITIES] },
-    due_date: { type: ["string", "null"], description: "YYYY-MM-DD, או null להסרת תאריך" }, title: { type: "string" }, space: { type: "string", description: "שם מרחב יעד להעברה" } } } } } } },
-  { type: "function", function: { name: "delete_tasks", description: "מחיקת משימות לפי מזהים או סינון.", parameters: { type: "object", properties: selectorProps } } },
-  { type: "function", function: { name: "summarize_tasks", description: "סיכום סטטיסטי: ספירות לפי מרחב/סטטוס/עדיפות, באיחור, להיום, דחוף, והמשימות החשובות ביותר.", parameters: { type: "object", properties: { space: { type: "string" } } } } },
+    title: { type: "string", description: "המשימה עצמה, קצרה, בלי שם המרחב ובלי התאריך" }, space: { type: "string", description: "שם המרחב. אם לא צוין - המרחב הנוכחי" },
+    status: { type: "string", enum: [...STATUSES] },
+    due_date: { type: "string", description: "YYYY-MM-DD" }, due_time: { type: "string", description: "HH:MM, רק אם צוינה שעה" }, notes: { type: "string", description: "הערות" } } } } } } } },
+  { type: "function", function: { name: "update_tasks", description: "עדכון משימות לפי מזהים או סינון: סטטוס, תאריך ושעת יעד, משימה, הערות או מרחב.", parameters: { type: "object", required: ["changes"], properties: { ...selectorProps, changes: { type: "object", properties: {
+    status: { type: "string", enum: [...STATUSES] },
+    due_date: { type: ["string", "null"], description: "YYYY-MM-DD, או null להסרת תאריך" }, due_time: { type: ["string", "null"], description: "HH:MM, או null להסרת שעה" },
+    title: { type: "string" }, notes: { type: "string", description: "הערות (מחליף את הקיימות)" }, space: { type: "string", description: "שם מרחב יעד להעברה" } } } } } } },
+  { type: "function", function: { name: "delete_tasks", description: "מחיקה לצמיתות. לביטול משימה השתמש ב-update_tasks עם status=cancelled, לא במחיקה.", parameters: { type: "object", properties: selectorProps } } },
+  { type: "function", function: { name: "summarize_tasks", description: "סיכום: ספירות לפי מרחב וסטטוס, באיחור, להיום והקרובות.", parameters: { type: "object", properties: { space: { type: "string" } } } } },
 ];
 
 /* ------------------------------ helpers -------------------------------- */
-type Ctx = { scope: Scope; spaces: Space[]; inScope: Space[]; today: string };
+type Ctx = { scope: Scope; spaces: Space[]; inScope: Space[]; today: string; current: Space | null };
 
-async function loadCtx(scope: Scope): Promise<Ctx> {
+async function loadCtx(scope: Scope, currentSpace?: string | null): Promise<Ctx> {
   const spaces = await listSpaces();
   const inScope = scope === "all" ? spaces : spaces.filter((s) => s.id === scope);
-  return { scope, spaces, inScope, today: todayStr() };
+  const current = inScope.length === 1 ? inScope[0] : inScope.find((s) => s.id === currentSpace) ?? null;
+  return { scope, spaces, inScope, today: todayStr(), current };
 }
 function findSpace(ctx: Ctx, name?: string): Space | { error: string } | undefined {
   if (!name) return undefined;
@@ -72,7 +73,7 @@ function findSpace(ctx: Ctx, name?: string): Space | { error: string } | undefin
 const isErr = (x: any): x is { error: string } => x && typeof x === "object" && "error" in x;
 
 function tview(t: Task, ctx: Ctx) {
-  return { id: t.id, title: t.title, space: ctx.spaces.find((s) => s.id === t.space_id)?.name, priority: PRIORITY_META[t.priority].label + ` (${t.priority})`, status: STATUS_META[t.status].label + ` (${t.status})`, due_date: t.due_date, overdue: !!t.due_date && t.due_date < ctx.today && t.status !== "done" };
+  return { id: t.id, title: t.title, notes: t.description || undefined, space: ctx.spaces.find((s) => s.id === t.space_id)?.name, status: STATUS_META[t.status].label + ` (${t.status})`, due_date: t.due_date, due_time: t.due_time ?? undefined, completed_at: t.completed_at ?? undefined, overdue: !!t.due_date && t.due_date < ctx.today && !isClosed(t.status) };
 }
 
 async function matchTasks(ctx: Ctx, args: any): Promise<Task[] | { error: string }> {
@@ -89,24 +90,23 @@ async function matchTasks(ctx: Ctx, args: any): Promise<Task[] | { error: string
     if (sp) tasks = tasks.filter((t) => t.space_id === sp.id);
   }
   if (Array.isArray(f.status) && f.status.length) tasks = tasks.filter((t) => f.status.includes(t.status));
-  else if (!f.include_done) tasks = tasks.filter((t) => t.status !== "done");
-  if (Array.isArray(f.priority) && f.priority.length) tasks = tasks.filter((t) => f.priority.includes(t.priority));
-  if (f.overdue) tasks = tasks.filter((t) => t.due_date && t.due_date < ctx.today && t.status !== "done");
+  else if (!f.include_closed) tasks = tasks.filter((t) => !isClosed(t.status));
+  if (f.overdue) tasks = tasks.filter((t) => t.due_date && t.due_date < ctx.today && !isClosed(t.status));
   if (f.due_on) tasks = tasks.filter((t) => t.due_date === f.due_on);
   if (f.due_from) tasks = tasks.filter((t) => t.due_date && t.due_date >= f.due_from);
   if (f.due_to) tasks = tasks.filter((t) => t.due_date && t.due_date <= f.due_to);
   if (f.no_due_date) tasks = tasks.filter((t) => !t.due_date);
-  if (f.text) tasks = tasks.filter((t) => t.title.includes(f.text));
+  if (f.text) tasks = tasks.filter((t) => t.title.includes(f.text) || t.description.includes(f.text));
   return tasks;
 }
 function sortTasks(ts: Task[]) {
-  return [...ts].sort((a, b) => PRIORITY_META[b.priority].rank - PRIORITY_META[a.priority].rank || (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"));
+  return [...ts].sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") || (a.due_time ?? "99").localeCompare(b.due_time ?? "99"));
 }
 
 /* ------------------------------ planning -------------------------------- */
 type Plan =
-  | { name: "add_tasks"; items: { title: string; space_id: string; priority?: Priority; status?: Status; due_date?: string | null; description?: string }[] }
-  | { name: "update_tasks"; ids: string[]; changes: { status?: Status; priority?: Priority; due_date?: string | null; title?: string; space_id?: string }; titles: string[]; changeText: string }
+  | { name: "add_tasks"; items: { title: string; space_id: string; status?: Status; due_date?: string | null; due_time?: string | null; description?: string }[] }
+  | { name: "update_tasks"; ids: string[]; changes: { status?: Status; due_date?: string | null; due_time?: string | null; title?: string; description?: string; space_id?: string }; titles: string[]; changeText: string }
   | { name: "delete_tasks"; ids: string[]; titles: string[] };
 
 async function planMutation(ctx: Ctx, name: string, args: any): Promise<{ plan: Plan } | { error: string }> {
@@ -116,9 +116,10 @@ async function planMutation(ctx: Ctx, name: string, args: any): Promise<{ plan: 
       if (!t?.title?.trim()) continue;
       let sp: Space | undefined;
       if (t.space) { const r = findSpace(ctx, t.space); if (isErr(r)) return r; sp = r; }
-      if (!sp && ctx.inScope.length === 1) sp = ctx.inScope[0];
+      if (!sp && ctx.current) sp = ctx.current;
       if (!sp) return { error: `לא צוין מרחב למשימה "${t.title}". מרחבים זמינים: ${ctx.inScope.map((s) => s.name).join(", ")}. שאל את המשתמש באיזה מרחב להוסיף.` };
-      out.push({ title: t.title.trim(), space_id: sp.id, priority: PRIORITIES.includes(t.priority) ? t.priority : undefined, status: STATUSES.includes(t.status) ? t.status : undefined, due_date: /^\d{4}-\d{2}-\d{2}$/.test(t.due_date ?? "") ? t.due_date : null, description: t.description });
+      const due_date = isDate(t.due_date) ? t.due_date : null;
+      out.push({ title: t.title.trim(), space_id: sp.id, status: STATUSES.includes(t.status) ? t.status : undefined, due_date, due_time: due_date && isTime(t.due_time) ? t.due_time : null, description: typeof t.notes === "string" ? t.notes : undefined });
     }
     if (!out.length) return { error: "לא התקבלו משימות להוספה" };
     return { plan: { name, items: out } };
@@ -133,12 +134,16 @@ async function planMutation(ctx: Ctx, name: string, args: any): Promise<{ plan: 
   const c = args.changes ?? {};
   const changes: any = {}; const parts: string[] = [];
   if (STATUSES.includes(c.status)) { changes.status = c.status; parts.push(`סטטוס ← ${STATUS_META[c.status as Status].label}`); }
-  if (PRIORITIES.includes(c.priority)) { changes.priority = c.priority; parts.push(`עדיפות ← ${PRIORITY_META[c.priority as Priority].label}`); }
   if ("due_date" in c) {
     if (c.due_date === null) { changes.due_date = null; parts.push("הסרת תאריך יעד"); }
-    else if (/^\d{4}-\d{2}-\d{2}$/.test(c.due_date)) { changes.due_date = c.due_date; parts.push(`תאריך יעד ← ${formatDateHe(c.due_date)}`); }
+    else if (isDate(c.due_date)) { changes.due_date = c.due_date; parts.push(`תאריך יעד ← ${formatDateHe(c.due_date)}`); }
   }
-  if (c.title?.trim()) { changes.title = c.title.trim(); parts.push(`כותרת ← ${c.title.trim()}`); }
+  if ("due_time" in c) {
+    if (c.due_time === null) { changes.due_time = null; parts.push("הסרת שעה"); }
+    else if (isTime(c.due_time)) { changes.due_time = c.due_time; parts.push(`שעה ← ${c.due_time}`); }
+  }
+  if (c.title?.trim()) { changes.title = c.title.trim(); parts.push(`משימה ← ${c.title.trim()}`); }
+  if (typeof c.notes === "string") { changes.description = c.notes; parts.push("עדכון הערות"); }
   if (c.space) { const sp = findSpace(ctx, c.space); if (isErr(sp)) return sp; if (sp) { changes.space_id = sp.id; parts.push(`מרחב ← ${sp.name}`); } }
   if (!parts.length) return { error: "לא צוינו שינויים תקינים" };
   const effective = matched.filter((t) => Object.entries(changes).some(([k, v]) => (t as any)[k] !== v));
@@ -186,20 +191,18 @@ async function runRead(ctx: Ctx, name: string, args: any): Promise<any> {
     if (isErr(sp)) return sp;
     const ids = new Set((sp ? [sp] : ctx.inScope).map((s) => s.id));
     const all = (await listTasks()).filter((t) => ids.has(t.space_id));
-    const open = all.filter((t) => t.status !== "done");
+    const open = all.filter((t) => !isClosed(t.status));
     const ws = weekStart(ctx.today);
     const per = (sp ? [sp] : ctx.inScope).map((s) => {
-      const ts = all.filter((t) => t.space_id === s.id); const o = ts.filter((t) => t.status !== "done");
-      return { space: s.name, open: o.length, overdue: o.filter((t) => t.due_date && t.due_date < ctx.today).length, done_this_week: ts.filter((t) => t.completed_at && t.completed_at.slice(0, 10) >= ws).length, urgent: o.filter((t) => t.priority === "urgent").length };
+      const ts = all.filter((t) => t.space_id === s.id); const o = ts.filter((t) => !isClosed(t.status));
+      return { space: s.name, open: o.length, in_progress: o.filter((t) => t.status === "in_progress").length, overdue: o.filter((t) => t.due_date && t.due_date < ctx.today).length, done_this_week: ts.filter((t) => t.status === "done" && t.completed_at && t.completed_at.slice(0, 10) >= ws).length };
     });
-    const count = <K extends string>(keys: readonly K[], f: (t: Task) => string) => Object.fromEntries(keys.map((k) => [k, open.filter((t) => f(t) === k).length]));
     return {
-      total: all.length, open: open.length, done: all.length - open.length,
-      by_status: count(STATUSES, (t) => t.status), by_priority: count(PRIORITIES, (t) => t.priority),
+      total: all.length, open: open.length,
+      by_status: Object.fromEntries(STATUSES.map((k) => [k, all.filter((t) => t.status === k).length])),
       overdue: open.filter((t) => t.due_date && t.due_date < ctx.today).map((t) => tview(t, ctx)),
       due_today: open.filter((t) => t.due_date === ctx.today).map((t) => tview(t, ctx)),
-      urgent: open.filter((t) => t.priority === "urgent").map((t) => tview(t, ctx)),
-      top_important: sortTasks(open).slice(0, 8).map((t) => tview(t, ctx)),
+      upcoming: sortTasks(open.filter((t) => t.due_date && t.due_date > ctx.today)).slice(0, 8).map((t) => tview(t, ctx)),
       per_space: per,
     };
   }
@@ -215,19 +218,23 @@ function nextDayOfMonth(today: string): string {
 function systemPrompt(ctx: Ctx, channel: string) {
   const days = Array.from({ length: 10 }, (_, i) => { const d = addDays(ctx.today, i); return `${d} (יום ${WEEKDAYS_HE[weekdayOf(d)]}${i === 0 ? ", היום" : i === 1 ? ", מחר" : ""})`; }).join("\n");
   const scopeText = ctx.scope === "all" ? "כל המרחבים" : `המרחב "${ctx.inScope[0]?.name}" בלבד`;
-  return `אתה סוכן ניהול משימות חכם בתוך מערכת "שליטה במשימות". אתה עונה תמיד בעברית, קצר וענייני (עד 3-4 משפטים, בלי הקדמות), ובטון חם ומקצועי.
-תחום העבודה הנוכחי: ${scopeText}. אתה פועל אך ורק על משימות בתחום הזה; אם מבקשים משהו מחוץ לו, הסבר בקצרה שאפשר לשנות את הבחירה בראש הצ'אט.
-המרחבים בתחום: ${ctx.inScope.map((s) => `"${s.name}"`).join(", ") || "אין"}.
+  return `אתה העוזר של מערכת "שליטה במשימות". המשתמש כותב לך בשורה אחת בראש המסך, ואתה עונה בעברית במשפט אחד או שניים לכל היותר.
+תחום העבודה: ${scopeText}. המרחבים: ${ctx.inScope.map((s) => `"${s.name}"`).join(", ") || "אין"}.
+${ctx.current ? `המשתמש נמצא כרגע במרחב "${ctx.current.name}". משימה בלי מרחב מפורש נכנסת אליו.` : "המשתמש נמצא בתצוגת כל המרחבים."}
+כל משימה מכילה: משימה (כותרת קצרה), הערות, תאריך יעד, שעה (לא חובה), סטטוס: לא החל (new), בתהליך (in_progress), בוצע (done), בוטלה (cancelled). בוצע ובוטלה עוברות לארכיון.
 היום: ${ctx.today} (יום ${WEEKDAYS_HE[weekdayOf(ctx.today)]}). אזור זמן: ישראל. הימים הקרובים:
 ${days}
 "עד ה-N בחודש" / "ב-N לחודש" = התאריך הקרוב ביותר (כולל היום) שבו היום בחודש הוא N. טבלה: ${nextDayOfMonth(ctx.today)}
 כללים:
 - השתמש בכלים כדי לקרוא ולשנות משימות. אל תמציא משימות ואל תנחש מזהים - קרא קודם עם read_tasks כשצריך.
 - כשהמשתמש מבקש פעולה, בצע אותה בקריאה לכלי. את בקשת האישור (מעל ${CONFIRM_OVER} משימות או מחיקה) מבצעת המערכת בעצמה - אל תשאל "האם לאשר" בטקסט.
-- ברירת מחדל להוספת משימה: עדיפות בינונית, סטטוס חדשה. "עד ה-10" = התאריך הקרוב עם היום ה-10 בחודש. "מחר", "ביום ראשון" וכו' - לפי הלוח למעלה.
-- במרחב בודד אפשר להשמיט שם מרחב בהוספה. בכל המרחבים - אם לא ברור המרחב, שאל.
-- אחרי שפעלת: אמור בקצרה מה עשית (כמה משימות ומה השתנה). בשאלות על עדיפויות: תן המלצה ממוקדת (דחוף, באיחור, להיום) ונמק במשפט.
-- אל תשתמש בכותרות, בטבלאות או בעיצוב markdown (בלי כוכביות ##). רשימות קצרות עם מקף מותרות${channel === "whatsapp" ? ". זו שיחת וואטסאפ: אפשר אימוג'י בודד" : ""}.`;
+- טקסט חופשי שנראה כמו משימה = הוספת משימה, גם בלי המילה "תוסיף". פורמט נפוץ: "<מרחב>: <משימה>", למשל "פרטי: לשלם חשבון חשמל עד יום שלישי הקרוב" → מרחב "פרטי", משימה "לשלם חשבון חשמל", תאריך יעד = יום שלישי הקרוב. שם מרחב יכול להיות קרוב ולא מדויק - בחר את המתאים.
+- אם המרחב לא צוין: אם יש מרחב נוכחי - אליו. אחרת בחר לפי התוכן רק אם ברור מאוד, ואם לא - שאל במשפט קצר.
+- שעה ("בשעה 13:00", "ב-9 בבוקר") נכנסת ל-due_time בפורמט HH:MM ותמיד יחד עם תאריך. משימה עם תאריך ושעה נכנסת אוטומטית גם ליומן גוגל.
+- פרטים נוספים שאינם המשימה עצמה (מספר טלפון, כתובת, הסבר) נכנסים להערות.
+- סטטוס ברירת מחדל: לא החל. "סיימתי X" = בוצע. "לבטל את X" = בוטלה (לא מחיקה). "עד ה-10" = התאריך הקרוב עם היום ה-10 בחודש. "מחר", "ביום שלישי" וכו' - לפי הלוח למעלה.
+- אחרי שפעלת: אמור במשפט אחד מה עשית, כולל המרחב והתאריך. למשל: "נוסף לפרטי: לשלם חשבון חשמל, יעד יום שלישי 21/10".
+- אל תשתמש בכותרות, בטבלאות או בעיצוב markdown (בלי כוכביות ##). רשימות קצרות עם מקף מותרות.`;
 }
 
 /* ------------------------------ main loop ------------------------------- */
@@ -257,7 +264,7 @@ async function loop(messages: OAIMsg[], ctx: Ctx, channel: string, chatRef: stri
       const d = describePlans(planList);
       const rows = await query<{ id: string }>(
         "INSERT INTO pending_actions(channel,chat_ref,payload) VALUES ($1,$2,$3::jsonb) RETURNING id",
-        [channel, chatRef, JSON.stringify({ messages, parsed, plans, errors, scope: ctx.scope })]
+        [channel, chatRef, JSON.stringify({ messages, parsed, plans, errors, scope: ctx.scope, current: ctx.current?.id ?? null })]
       );
       return { reply: `${d.text} לאשר?`, mutated: acc.mutated, actions: acc.actions, pending: { id: rows[0].id, text: d.text, count: d.count, items: d.items } };
     }
@@ -280,8 +287,8 @@ async function runCalls(messages: OAIMsg[], ctx: Ctx, parsed: any[], plans: Reco
   }
 }
 
-export async function runAgent(opts: { history: ChatMsg[]; scope: Scope; channel?: string; chatRef?: string | null }): Promise<AgentResult> {
-  const ctx = await loadCtx(opts.scope);
+export async function runAgent(opts: { history: ChatMsg[]; scope: Scope; currentSpace?: string | null; channel?: string; chatRef?: string | null }): Promise<AgentResult> {
+  const ctx = await loadCtx(opts.scope, opts.currentSpace);
   if (opts.scope !== "all" && !ctx.inScope.length) return { reply: "המרחב שנבחר לא קיים יותר. בחר מרחב אחר בראש הצ'אט.", mutated: false, actions: [] };
   const messages: OAIMsg[] = opts.history.slice(-20).map((m) => ({ role: m.role, content: m.content }));
   return loop(messages, ctx, opts.channel ?? "web", opts.chatRef ?? null, { mutated: false, actions: [] });
@@ -292,7 +299,7 @@ export async function resolvePending(id: string, approve: boolean): Promise<Agen
     "UPDATE pending_actions SET status=$2 WHERE id=$1 AND status='pending' RETURNING payload, channel, chat_ref", [id, approve ? "approved" : "declined"]);
   if (!rows.length) return { reply: "הבקשה הזו כבר טופלה או שפגה תוקפה.", mutated: false, actions: [] };
   const { payload, channel, chat_ref } = rows[0];
-  const ctx = await loadCtx(payload.scope);
+  const ctx = await loadCtx(payload.scope, payload.current);
   const acc = { mutated: false, actions: [] as string[] };
   const messages: OAIMsg[] = payload.messages;
   await runCalls(messages, ctx, payload.parsed, payload.plans, payload.errors, acc, approve);
